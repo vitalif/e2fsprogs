@@ -474,6 +474,10 @@ static int frag_report(const char *filename)
 	}
 
 	if (force_bmap || rc < 0) { /* FIEMAP failed, try FIBMAP instead */
+		if (numblocks > (unsigned long)-1L) {
+			fprintf(stderr, "%s: File too big to use FIBMAP\n", filename);
+			goto out_close;
+		}
 		expected = filefrag_fibmap(fd, blk_shift, &num_extents,
 					   &st, numblocks, is_ext2);
 		if (expected < 0) {
