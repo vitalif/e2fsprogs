@@ -1,0 +1,31 @@
+.TH E2PATCH 8 "@E2FSPROGS_MONTH@ @E2FSPROGS_YEAR@" "E2fsprogs version @E2FSPROGS_VERSION@"
+.SH NAME
+e2patch \- patch tool for safely applying libext2fs patch files to block devices
+.SH SYNOPSIS
+.B e2patch backup \fI<device>\fR \fI<patch_file>\fR \fI<backup_file>\fR
+.br
+.B e2patch apply \fI<device>\fR \fI<patch_file>\fR
+.SH DESCRIPTION
+.B e2patch
+applies and restores "patches" produced by e2fsprogs with patch file option
+(\fBresize2fs -T <patch_file>\fR) to block devices.
+.PP
+"Patch files" are sparse files containing overwritten device blocks and
+a block bitmap.
+.PP
+"Patch files" are faster, safer and simpler to use than "undo files"
+(\fBe2undo\fR and \fBresize2fs -z <undo_file>\fR), even though their original
+design goal is similar.
+.SH COMMANDS
+.TP
+.B e2patch backup \fI<device>\fR \fI<patch_file>\fR \fI<backup_file>\fR
+Creates a backup in <backup_file> for restoring after bad patch <patch_file>.
+Backup can then also be applied with \fBe2patch apply\fR
+.TP
+.B e2patch apply \fI<device>\fR \fI<patch_file>\fR
+Apply <patch_file> to <device>.
+.SH AUTHOR
+Written by Vitaliy Filippov <vitalif@mail.ru>
+.SH SEE ALSO
+.BR resize2fs (8),
+.BR e2undo (8).

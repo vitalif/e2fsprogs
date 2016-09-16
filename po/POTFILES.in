@@ -43,6 +43,7 @@ misc/e2image.c
 misc/e2initrd_helper.c
 misc/e2label.c
 misc/e2undo.c
+misc/e2patch.c
 misc/e4crypt.c
 misc/e4defrag.c
 misc/filefrag.c

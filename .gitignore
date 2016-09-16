@@ -161,6 +161,8 @@ misc/e2initrd_helper
 misc/e2label.8
 misc/e2undo
 misc/e2undo.8
+misc/e2patch
+misc/e2patch.8
 misc/e4defrag
 misc/e4defrag.8
 misc/ext4.5
