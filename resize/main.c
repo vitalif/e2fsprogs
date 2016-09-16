@@ -47,7 +47,7 @@ static char *device_name, *io_options;
 static void usage (char *prog)
 {
 	fprintf (stderr, _("Usage: %s [-d debug_flags] [-f] [-F] [-M] [-P] "
-			   "[-p] device [-b|-s|new_size] [-z undo_file]\n\n"),
+			   "[-p] device [-b|-s|new_size] [-T patch_file] [-z undo_file]\n\n"),
 		 prog);
 
 	exit (1);
@@ -167,6 +167,20 @@ static void bigalloc_check(ext2_filsys fs, int force)
 	}
 }
 
+static int resize2fs_setup_patch(const char *device, char *patch_file,
+			       io_manager *io_ptr)
+{
+	set_patch_io_backing_manager(*io_ptr);
+	set_patch_io_patch_file(patch_file);
+	*io_ptr = patch_io_manager;
+	printf(_("To make backup before applying changes run:\n"
+		"  e2patch backup %s %s %s.backup\n"
+		"Then, to apply the operation to the real filesystem run:\n"
+		"  e2patch apply %s %s\n"),
+		device, patch_file, patch_file, device, patch_file);
+	return 0;
+}
+
 static int resize2fs_setup_tdb(const char *device, char *undo_file,
 			       io_manager *io_ptr)
 {
@@ -267,7 +281,7 @@ int main (int argc, char ** argv)
 	unsigned int	blocksize;
 	long		sysval;
 	int		len, mount_flags;
-	char		*mtpt, *undo_file = NULL;
+	char		*mtpt, *undo_file = NULL, *patch_file = NULL;
 
 #ifdef ENABLE_NLS
 	setlocale(LC_MESSAGES, "");
@@ -284,7 +298,7 @@ int main (int argc, char ** argv)
 	if (argc && *argv)
 		program_name = *argv;
 
-	while ((c = getopt(argc, argv, "d:fFhMPpS:bsz:")) != EOF) {
+	while ((c = getopt(argc, argv, "d:fFhMPpS:bsT:z:")) != EOF) {
 		switch (c) {
 		case 'h':
 			usage(program_name);
@@ -315,6 +329,9 @@ int main (int argc, char ** argv)
 			break;
 		case 's':
 			flags |= RESIZE_DISABLE_64BIT;
+			break;
+		case 'T':
+			patch_file = optarg;
 			break;
 		case 'z':
 			undo_file = optarg;
@@ -402,7 +419,11 @@ int main (int argc, char ** argv)
 		io_flags = EXT2_FLAG_RW | EXT2_FLAG_EXCLUSIVE;
 
 	io_flags |= EXT2_FLAG_64BITS;
-	if (undo_file) {
+	if (patch_file) {
+		retval = resize2fs_setup_patch(device_name, patch_file, &io_ptr);
+		if (retval)
+			exit(1);
+	} else if (undo_file) {
 		retval = resize2fs_setup_tdb(device_name, undo_file, &io_ptr);
 		if (retval)
 			exit(1);

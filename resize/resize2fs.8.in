@@ -159,6 +159,12 @@ program will heuristically determine the RAID stride that was specified
 when the filesystem was created.  This option allows the user to
 explicitly specify a RAID stride setting to be used by resize2fs instead.
 .TP
+.BI \-T " patch_file"
+Do not apply changes to the real filesystem; write updates into a sparse file
+named 'patch_file' to safely apply them later with e2patch(8) utility.
+You'll also be able to create a backup before applying patch and safely
+restore it in case of power outage or system crash.
+.TP
 .BI \-z " undo_file"
 Before overwriting a file system block, write the old contents of the block to
 an undo file.  This undo file can be used with e2undo(8) to restore the old

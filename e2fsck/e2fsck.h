@@ -391,6 +391,9 @@ struct e2fsck_struct {
 	 */
 	ext2fs_inode_bitmap inodes_to_rebuild;
 
+	/* Patch file */
+	char *patch_file;
+
 	/* Undo file */
 	char *undo_file;
 };

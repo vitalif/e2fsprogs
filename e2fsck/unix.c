@@ -76,7 +76,7 @@ static void usage(e2fsck_t ctx)
 	fprintf(stderr,
 		_("Usage: %s [-panyrcdfktvDFV] [-b superblock] [-B blocksize]\n"
 		"\t\t[-l|-L bad_blocks_file] [-C fd] [-j external_journal]\n"
-		"\t\t[-E extended-options] [-z undo_file] device\n"),
+		"\t\t[-E extended-options] [-T patch_file] [-z undo_file] device\n"),
 		ctx->program_name);
 
 	fprintf(stderr, "%s", _("\nEmergency help:\n"
@@ -92,6 +92,7 @@ static void usage(e2fsck_t ctx)
 		" -j external_journal  Set location of the external journal\n"
 		" -l bad_blocks_file   Add to badblocks list\n"
 		" -L bad_blocks_file   Set badblocks list\n"
+		" -T patch_file        Create a patch file instead of applying changes to real FS\n"
 		" -z undo_file         Create an undo file\n"
 		));
 
@@ -804,7 +805,7 @@ static errcode_t PRS(int argc, char *argv[], e2fsck_t *ret_ctx)
 
 	phys_mem_kb = get_memory_size() / 1024;
 	ctx->readahead_kb = ~0ULL;
-	while ((c = getopt(argc, argv, "panyrcC:B:dE:fvtFVM:b:I:j:P:l:L:N:SsDkz:")) != EOF)
+	while ((c = getopt(argc, argv, "panyrcC:B:dE:fvtFVM:b:I:j:P:l:L:N:SsDkT:z:")) != EOF)
 		switch (c) {
 		case 'C':
 			ctx->progress = e2fsck_update_progress;
@@ -935,6 +936,9 @@ static errcode_t PRS(int argc, char *argv[], e2fsck_t *ret_ctx)
 			break;
 		case 'k':
 			keep_bad_blocks++;
+			break;
+		case 'T':
+			ctx->patch_file = optarg;
 			break;
 		case 'z':
 			ctx->undo_file = optarg;
@@ -1233,6 +1237,19 @@ check_error:
 	return retval;
 }
 
+static int e2fsck_setup_patch(e2fsck_t ctx, io_manager *io_ptr)
+{
+	set_patch_io_backing_manager(*io_ptr);
+	set_patch_io_patch_file(ctx->patch_file);
+	*io_ptr = patch_io_manager;
+	printf(_("To make backup before applying changes run:\n"
+		"  e2patch backup %s %s %s.backup\n"
+		"Then, to apply the operation to the real filesystem run:\n"
+		"  e2patch apply %s %s\n"),
+		ctx->device_name, ctx->patch_file, ctx->patch_file, ctx->device_name, ctx->patch_file);
+	return 0;
+}
+
 static int e2fsck_setup_tdb(e2fsck_t ctx, io_manager *io_ptr)
 {
 	errcode_t retval = ENOMEM;
@@ -1430,7 +1447,11 @@ restart:
 			flags &= ~EXT2_FLAG_EXCLUSIVE;
 	}
 
-	if (ctx->undo_file) {
+	if (ctx->patch_file) {
+		retval = e2fsck_setup_patch(ctx, &io_ptr);
+		if (retval)
+			exit(FSCK_ERROR);
+	} else if (ctx->undo_file) {
 		retval = e2fsck_setup_tdb(ctx, &io_ptr);
 		if (retval)
 			exit(FSCK_ERROR);
