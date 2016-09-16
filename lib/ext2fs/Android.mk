@@ -75,6 +75,8 @@ libext2fs_src_files := \
 	swapfs.c \
 	symlink.c \
 	undo_io.c \
+	patch.c \
+	patch_io.c \
 	unix_io.c \
 	unlink.c \
 	valid_blk.c \
