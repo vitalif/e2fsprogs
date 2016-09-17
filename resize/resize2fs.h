@@ -141,7 +141,7 @@ struct ext2_resize_struct {
 
 
 /* prototypes */
-extern errcode_t resize_fs(ext2_filsys fs, blk64_t *new_size, int flags,
+extern errcode_t resize_fs(ext2_filsys fs, blk64_t *new_size, __u32 new_inodes, int flags,
 			   errcode_t	(*progress)(ext2_resize_t rfs,
 					    int pass, unsigned long cur,
 					    unsigned long max));

@@ -46,7 +46,7 @@ static char *device_name, *io_options;
 
 static void usage (char *prog)
 {
-	fprintf (stderr, _("Usage: %s [-d debug_flags] [-f] [-F] [-M] [-P] "
+	fprintf (stderr, _("Usage: %s [-d debug_flags] [-f] [-F] [-M] [-N new_inodes] [-P] "
 			   "[-p] device [-b|-s|new_size] [-T patch_file] [-z undo_file]\n\n"),
 		 prog);
 
@@ -272,6 +272,7 @@ int main (int argc, char ** argv)
 	blk64_t		new_size = 0;
 	blk64_t		max_size = 0;
 	blk64_t		min_size = 0;
+	__u32		new_inodes = 0;
 	io_manager	io_ptr;
 	char		*new_size_str = 0;
 	int		use_stride = -1;
@@ -298,7 +299,7 @@ int main (int argc, char ** argv)
 	if (argc && *argv)
 		program_name = *argv;
 
-	while ((c = getopt(argc, argv, "d:fFhMPpS:bsT:z:")) != EOF) {
+	while ((c = getopt(argc, argv, "d:fFhMPN:pS:bsT:z:")) != EOF) {
 		switch (c) {
 		case 'h':
 			usage(program_name);
@@ -314,6 +315,9 @@ int main (int argc, char ** argv)
 			break;
 		case 'P':
 			print_min_size = 1;
+			break;
+		case 'N':
+			new_inodes = strtoul(optarg, 0, 0);
 			break;
 		case 'd':
 			flags |= atoi(optarg);
@@ -604,7 +608,7 @@ int main (int argc, char ** argv)
 				"feature.\n"));
 			exit(1);
 		}
-	} else if (new_size == ext2fs_blocks_count(fs->super)) {
+	} else if (new_size == ext2fs_blocks_count(fs->super) && !new_inodes) {
 		fprintf(stderr, _("The filesystem is already %llu (%dk) "
 			"blocks long.  Nothing to do!\n\n"), new_size,
 			blocksize / 1024);
@@ -633,7 +637,7 @@ int main (int argc, char ** argv)
 			printf(_("Resizing the filesystem on "
 				 "%s to %llu (%dk) blocks.\n"),
 			       device_name, new_size, blocksize / 1024);
-		retval = resize_fs(fs, &new_size, flags,
+		retval = resize_fs(fs, &new_size, new_inodes, flags,
 				   ((flags & RESIZE_PERCENT_COMPLETE) ?
 				    resize_progress_func : 0));
 	}
