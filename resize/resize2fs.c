@@ -1347,7 +1347,12 @@ static errcode_t blocks_to_move(ext2_resize_t rfs)
 	if (rfs->old_fs->inode_blocks_per_group != fs->inode_blocks_per_group) {
 		dgrp_t flexbg_size, flex_count, grp_in_flex;
 		ext2fs_block_bitmap	empty_bmap;
-		retval = ext2fs_allocate_block_bitmap(fs, _("empty bitmap"), &empty_bmap);
+/*		// this is how mke2fs allocates inode tables...
+		retval = ext2fs_make_generic_bitmap(EXT2_ET_MAGIC_BLOCK_BITMAP, fs,
+			fs->super->s_first_data_block,
+			ext2fs_blocks_count(fs->super)-1,
+			ext2fs_blocks_count(fs->super)-1, "subcluster inode table bitmap", 0, &empty_bmap);*/
+		retval = ext2fs_allocate_block_bitmap(fs, _("metadata without inode tables"), &empty_bmap);
 		if (retval) {
 			return retval;
 		}
@@ -1368,10 +1373,18 @@ static errcode_t blocks_to_move(ext2_resize_t rfs)
 			if (retval) {
 				return retval;
 			}
-			ext2fs_mark_block_bitmap_range2(empty_bmap,
-				ext2fs_inode_table_loc(fs, g), fs->inode_blocks_per_group);
+/*			ext2fs_mark_block_bitmap_range2(empty_bmap,
+				ext2fs_inode_table_loc(fs, g), fs->inode_blocks_per_group);*/
+			group_blk = ext2fs_inode_table_loc(fs, g);
+			if (g > 0 && group_blk < ext2fs_inode_table_loc(fs, g-1)+fs->inode_blocks_per_group) {
+				ext2fs_unmark_block_bitmap_range2(fs->block_map, group_blk, fs->inode_blocks_per_group);
+				group_blk = ext2fs_inode_table_loc(fs, g-1)+fs->inode_blocks_per_group;
+				ext2fs_inode_table_loc_set(fs, g, group_blk);
+				ext2fs_group_desc_csum_set(fs, g);
+				ext2fs_mark_block_bitmap_range2(fs->block_map, group_blk, fs->inode_blocks_per_group);
+			}
+			group_blk += fs->inode_blocks_per_group;
 			// We may need to move some blocks away (mainly if extending inode tables)
-			group_blk = ext2fs_inode_table_loc(fs, g)+fs->inode_blocks_per_group;
 			for (blk = ext2fs_inode_table_loc(fs, g); blk < group_blk; blk++) {
 				if (blk < ext2fs_blocks_count(old_fs->super) &&
 					ext2fs_test_block_bitmap2(old_fs->block_map, blk) &&
