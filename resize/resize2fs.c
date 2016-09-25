@@ -1373,7 +1373,8 @@ static errcode_t blocks_to_move(ext2_resize_t rfs)
 			// We may need to move some blocks away (mainly if extending inode tables)
 			group_blk = ext2fs_inode_table_loc(fs, g)+fs->inode_blocks_per_group;
 			for (blk = ext2fs_inode_table_loc(fs, g); blk < group_blk; blk++) {
-				if (ext2fs_test_block_bitmap2(old_fs->block_map, blk) &&
+				if (blk < ext2fs_blocks_count(old_fs->super) &&
+					ext2fs_test_block_bitmap2(old_fs->block_map, blk) &&
 				    !ext2fs_test_block_bitmap2(meta_bmap, blk)) {
 					ext2fs_mark_block_bitmap2(rfs->move_blocks, blk);
 					rfs->needed_blocks++;
@@ -2109,7 +2110,7 @@ static errcode_t inodes_to_move(ext2_resize_t rfs)
 
 	start_to_move = (rfs->new_fs->group_desc_count *
 		 rfs->old_fs->super->s_inodes_per_group);
-	for (ino = start_to_move; ino <= rfs->old_fs->group_desc_count * rfs->old_fs->super->s_inodes_per_group; ino++) {
+	for (ino = start_to_move+1; ino <= rfs->old_fs->group_desc_count * rfs->old_fs->super->s_inodes_per_group; ino++) {
 		ext2fs_mark_inode_bitmap2(rfs->old_fs->inode_map, ino);
 	}
 	if (shrink_inodes) {
@@ -2199,9 +2200,9 @@ static errcode_t inodes_to_move(ext2_resize_t rfs)
 		/*
 		 * Update inodes to point to new blocks.
 		 */
-		pb.is_dir = LINUX_S_ISDIR(inode->i_mode);
 		if (ext2fs_inode_has_valid_blocks2(rfs->old_fs, inode) && rfs->bmap) {
 			pb.changed = 0;
+			pb.is_dir = LINUX_S_ISDIR(inode->i_mode);
 			pb.ino = ino;
 			pb.old_ino = ino; // FIXME debug output will show translated inodes
 			pb.has_extents = inode->i_flags & EXT4_EXTENTS_FL;
@@ -2364,7 +2365,7 @@ static errcode_t move_inode_tables(ext2_resize_t rfs)
 	__u32 old_ibg = rfs->old_fs->inode_blocks_per_group;
 	__u32 new_ibg = rfs->new_fs->inode_blocks_per_group;
 	int retval;
-	blk64_t size, blk;
+	blk64_t size, blk, ib;
 	int change_inodes = old_ibg != new_ibg;
 	__u32 unused, ino, old_ino, i;
 	ext2fs_block_bitmap meta_bmap = NULL;
@@ -2402,9 +2403,7 @@ static errcode_t move_inode_tables(ext2_resize_t rfs)
 			ext2fs_bg_free_inodes_count(rfs->new_fs, g),
 			ext2fs_bg_itable_unused(rfs->old_fs, g),
 			ext2fs_bg_itable_unused(rfs->new_fs, g));
-		if ((change_inodes || ext2fs_inode_table_loc(rfs->new_fs, g) != ext2fs_inode_table_loc(rfs->old_fs, g)) &&
-			(!ext2fs_has_group_desc_csum(rfs->new_fs) ||
-			!ext2fs_bg_flags_test(rfs->new_fs, g, EXT2_BG_INODE_UNINIT)))
+		if (change_inodes || ext2fs_inode_table_loc(rfs->new_fs, g) != ext2fs_inode_table_loc(rfs->old_fs, g))
 		{
 			move_count++;
 			if (move_count == 1)
@@ -2419,27 +2418,31 @@ static errcode_t move_inode_tables(ext2_resize_t rfs)
 		if (move_count > 0)
 		{
 			end_g = g;
-			for (g = move_start+move_count; g > move_start; g--)
+			for (i = 0, g = move_start+move_count-1; i < move_count; i++, g--)
 			{
-				retval = io_channel_read_blk64(rfs->new_fs->io, ext2fs_inode_table_loc(rfs->old_fs, g-1), size, rfs->itable_buf);
-				if (retval)
-					return retval;
-				retval = io_channel_write_blk64(rfs->new_fs->io, ext2fs_inode_table_loc(rfs->new_fs, g-1), size, rfs->itable_buf);
-				if (retval)
-					return retval;
-				if (new_ibg > old_ibg)
+				if (!ext2fs_has_group_desc_csum(rfs->new_fs) ||
+					!ext2fs_bg_flags_test(rfs->new_fs, g, EXT2_BG_INODE_UNINIT))
 				{
-					retval = ext2fs_zero_blocks2(rfs->new_fs,
-						ext2fs_inode_table_loc(rfs->new_fs, g-1)+old_ibg,
-						new_ibg-old_ibg, NULL, NULL);
+					retval = io_channel_read_blk64(rfs->new_fs->io, ext2fs_inode_table_loc(rfs->old_fs, g), size, rfs->itable_buf);
 					if (retval)
 						return retval;
+					retval = io_channel_write_blk64(rfs->new_fs->io, ext2fs_inode_table_loc(rfs->new_fs, g), size, rfs->itable_buf);
+					if (retval)
+						return retval;
+					if (new_ibg > old_ibg)
+					{
+						retval = ext2fs_zero_blocks2(rfs->new_fs,
+							ext2fs_inode_table_loc(rfs->new_fs, g)+old_ibg,
+							new_ibg-old_ibg, NULL, NULL);
+						if (retval)
+							return retval;
+					}
 				}
-				blk = ext2fs_inode_table_loc(rfs->old_fs, g-1);
-				for (i = 0; i < old_ibg; i++)
-					if (!ext2fs_test_block_bitmap2(meta_bmap, blk+i))
-						ext2fs_unmark_block_bitmap2(rfs->new_fs->block_map, blk+i);
-				ext2fs_mark_block_bitmap_range2(rfs->new_fs->block_map, ext2fs_inode_table_loc(rfs->new_fs, g-1), new_ibg);
+				blk = ext2fs_inode_table_loc(rfs->old_fs, g);
+				for (ib = 0; ib < old_ibg; ib++)
+					if (!ext2fs_test_block_bitmap2(meta_bmap, blk+ib))
+						ext2fs_unmark_block_bitmap2(rfs->new_fs->block_map, blk+ib);
+				ext2fs_mark_block_bitmap_range2(rfs->new_fs->block_map, ext2fs_inode_table_loc(rfs->new_fs, g), new_ibg);
 			}
 			move_start = move_count = 0;
 			g = end_g;
