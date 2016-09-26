@@ -2181,12 +2181,13 @@ static errcode_t inodes_to_move(ext2_resize_t rfs)
 			ext2fs_inode_alloc_stats2(rfs->old_fs, new_inode, +1, LINUX_S_ISDIR(inode->i_mode));
 			if (old_g < rfs->new_fs->group_desc_count)
 			{
-				/* Adjust alloc stats for moved inode to have correct free_inodes_count */
-				ext2fs_bg_free_inodes_count_set(rfs->new_fs, old_g, ext2fs_bg_free_inodes_count(rfs->new_fs, old_g) + 1);
+				/*
+				 * Don't bother to adjust free_inodes_count for group because freed
+				 * inodes will be accounted as part of inodes_per_group change
+				 */
 				if (LINUX_S_ISDIR(inode->i_mode))
 					ext2fs_bg_used_dirs_count_set(rfs->new_fs, old_g, ext2fs_bg_used_dirs_count(rfs->new_fs, old_g) - 1);
 				ext2fs_group_desc_csum_set(rfs->new_fs, old_g);
-				rfs->new_fs->super->s_free_inodes_count++;
 			}
 			ext2fs_inode_alloc_stats2(rfs->new_fs, tr_ino, +1, LINUX_S_ISDIR(inode->i_mode));
 			inode->i_ctime = time(0);
@@ -2312,7 +2313,6 @@ static errcode_t inode_scan_and_fix(ext2_resize_t rfs)
 		if (retval)
 			goto errout;
 
-remap_blocks:
 		if (pb.changed)
 			retval = ext2fs_write_inode_full(rfs->new_fs,
 							 ino,
@@ -2398,14 +2398,20 @@ static errcode_t move_inode_tables(ext2_resize_t rfs)
 	{
 		if (change_inodes)
 		{
-			unused = ext2fs_bg_itable_unused(rfs->new_fs, g);
+			/*
+			 * new_fs may have incorrect itable_unused because we're not adjusting it
+			 * before calling inode_alloc_stats2 in inodes_to_move().
+			 * and it's OK to take free_inodes_count from old_fs because any inodes
+			 * that are freed may only lay in shrinked inode table areas.
+			 */
+			unused = ext2fs_bg_itable_unused(rfs->old_fs, g);
 			if (new_ipg < old_ipg && unused < old_ipg-new_ipg)
 				unused = 0;
 			else
 				unused = unused + new_ipg - old_ipg;
 			ext2fs_bg_itable_unused_set(rfs->new_fs, g, unused);
 			ext2fs_bg_free_inodes_count_set(rfs->new_fs, g,
-				ext2fs_bg_free_inodes_count(rfs->new_fs, g) + new_ipg - old_ipg);
+				ext2fs_bg_free_inodes_count(rfs->old_fs, g) + new_ipg - old_ipg);
 			ext2fs_group_desc_csum_set(rfs->new_fs, g);
 		}
 		printf("g%u = [%u?] %u->%u free=%u->%u unused=%u->%u\n", g,
