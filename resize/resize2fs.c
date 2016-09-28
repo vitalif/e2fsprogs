@@ -2098,6 +2098,9 @@ static void quiet_com_err_proc(const char *whoami EXT2FS_ATTR((unused)),
 #define TRANSLATE_IPG(ino,old_fs,new_fs) (1 + (((ino)-1) % (old_fs)->super->s_inodes_per_group) + \
 	((ino)-1) / (old_fs)->super->s_inodes_per_group * (new_fs)->super->s_inodes_per_group)
 
+/**
+ * Move inodes and rewrite references to blocks moved in blocks_to_move()
+ */
 static errcode_t inodes_to_move(ext2_resize_t rfs)
 {
 	struct process_block_struct	pb;
@@ -2235,10 +2238,6 @@ static errcode_t inodes_to_move(ext2_resize_t rfs)
 	}
 
 errout:
-	if (rfs->bmap) {
-		ext2fs_free_extent_table(rfs->bmap);
-		rfs->bmap = 0;
-	}
 	if (scan)
 		ext2fs_close_inode_scan(scan);
 	if (block_buf)
@@ -2247,6 +2246,10 @@ errout:
 	return retval;
 }
 
+/**
+ * Remap extattr blocks, rewrite inode and extattr checksums
+ * and schedule directory blocks for inode remapping
+ */
 static errcode_t inode_scan_and_fix(ext2_resize_t rfs)
 {
 	struct process_block_struct	pb;
@@ -2261,6 +2264,7 @@ static errcode_t inode_scan_and_fix(ext2_resize_t rfs)
 
 	if ((rfs->old_fs->group_desc_count <=
 	     rfs->new_fs->group_desc_count) &&
+	    !rfs->bmap &&
 	    !change_inodes)
 		return 0;
 
@@ -2361,6 +2365,10 @@ static errcode_t inode_scan_and_fix(ext2_resize_t rfs)
 
 errout:
 	reset_com_err_hook();
+	if (rfs->bmap) {
+		ext2fs_free_extent_table(rfs->bmap);
+		rfs->bmap = 0;
+	}
 	if (scan)
 		ext2fs_close_inode_scan(scan);
 	if (block_buf)
